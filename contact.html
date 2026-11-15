@@ -549,17 +549,55 @@
   var main = document.querySelector('[data-main-content="true"]');
   if (skip && main) skip.addEventListener('click', function () { main.focus(); });
 
-  /* Contact form: open the visitor's email app with the message filled in. */
+  /* Contact form: send directly from the page (FormSubmit) and show a confirmation. */
   document.querySelectorAll('form').forEach(function (form) {
     var btn = form.querySelector('button');
+    var btnLabel = btn ? btn.querySelector('span') : null;
+    var label = form.querySelector('label');
+    var note = document.createElement('p');
+    note.setAttribute('role', 'status');
+    var ls = label ? getComputedStyle(label) : null;
+    note.style.cssText = 'position:absolute;left:0;right:0;top:calc(100% + 14px);margin:0;text-align:center;font-size:16px;z-index:1;' +
+      (ls ? 'font-family:' + ls.fontFamily + ';color:' + ls.color + ';' : '');
+    var holder = btn ? btn.parentNode : form;
+    if (getComputedStyle(holder).position === 'static') holder.style.position = 'relative';
+    holder.style.overflow = 'visible';
+    holder.appendChild(note);
+
+    var sending = false;
     var send = function (e) {
       e.preventDefault();
-      if (!form.reportValidity()) return;
+      if (sending || !form.reportValidity()) return;
       var val = function (n) { var el = form.querySelector('[name="' + n + '"]'); return el ? el.value.trim() : ''; };
       var name = (val('first-name') + ' ' + val('last-name')).trim();
-      var body = 'Name: ' + name + '\nEmail: ' + val('email') + '\nPhone: ' + val('phone') + '\n\n' + val('write-a message');
-      window.location.href = 'mailto:edpassh2oecu@gmail.com?subject=' +
-        encodeURIComponent('Website message from ' + (name || val('email'))) + '&body=' + encodeURIComponent(body);
+      sending = true;
+      if (btn) btn.disabled = true;
+      if (btnLabel) btnLabel.textContent = 'Sending...';
+      note.textContent = '';
+      fetch('https://formsubmit.co/ajax/edpassh2oecu@gmail.com', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({
+          _subject: 'Website message from ' + (name || val('email')),
+          _template: 'table',
+          _captcha: 'false',
+          Name: name,
+          email: val('email'),
+          Phone: val('phone'),
+          Message: val('write-a message')
+        })
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        if (d && (d.success === true || d.success === 'true')) {
+          form.reset();
+          note.textContent = 'Thanks for submitting!';
+        } else { throw new Error('not sent'); }
+      }).catch(function () {
+        note.textContent = 'Sorry, your message could not be sent. Please email us at edpassh2oecu@gmail.com.';
+      }).then(function () {
+        sending = false;
+        if (btn) btn.disabled = false;
+        if (btnLabel) btnLabel.textContent = 'Submit';
+      });
     };
     form.addEventListener('submit', send);
     if (btn) btn.addEventListener('click', send);
