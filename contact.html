@@ -665,7 +665,7 @@
       sub.textContent = 'We\u2019ll open it with your message already written.';
       sub.style.cssText = 'margin:0 0 18px;font-size:15px;' + textFont;
       panel.appendChild(h); panel.appendChild(sub);
-      var order = isPhone ? ['app', 'gmail', 'outlook', 'office', 'yahoo'] : ['gmail', 'outlook', 'office', 'yahoo', 'app'];
+      var order = ['gmail', 'outlook', 'office', 'yahoo', 'app'];
       order.forEach(function (k) {
         var b = document.createElement('button');
         b.type = 'button';
@@ -711,7 +711,7 @@
     var submit = function (ev) {
       ev.preventDefault();
       if (!form.reportValidity()) return;
-      if (isPhone) return send('app');
+      if (isPhone) return openChooser();   /* phones: always let the visitor pick */
       var g = guess(val('email'));
       if (g) send(g); else openChooser();
     };
