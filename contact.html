@@ -549,58 +549,174 @@
   var main = document.querySelector('[data-main-content="true"]');
   if (skip && main) skip.addEventListener('click', function () { main.focus(); });
 
-  /* Contact form: send directly from the page (FormSubmit) and show a confirmation. */
+  /* Contact form: open the visitor's own email (Gmail, Outlook, Yahoo or their email app)
+     with the message already written. No outside services. */
   document.querySelectorAll('form').forEach(function (form) {
+    var TO = 'edpassh2oecu@gmail.com';
     var btn = form.querySelector('button');
-    var btnLabel = btn ? btn.querySelector('span') : null;
     var label = form.querySelector('label');
+    var ls = label ? getComputedStyle(label) : null;
+    var bl = btn ? getComputedStyle(btn.querySelector('span') || btn) : null;
+    var cs = btn ? getComputedStyle(btn) : null;
+    /* Freeze the normal (not hovered) look of the Submit button at page load. */
+    var bvar = btn ? getComputedStyle(btn.parentNode) : null;
+    var bgVar = bvar ? bvar.getPropertyValue('--bg').trim() : '';
+    var bs = cs ? { backgroundColor: bgVar ? 'rgba(' + bgVar + ',' + (bvar.getPropertyValue('--alpha-bg').trim() || 1) + ')' : cs.backgroundColor,
+                    borderRadius: cs.borderRadius } : null;
+    bl = bl ? { color: bl.color, font: bl.font, fontFamily: bl.fontFamily } : null;
+    ls = ls ? { color: ls.color, fontFamily: ls.fontFamily } : null;
+    /* The Submit button's own hover color (stored by the original design on its container). */
+    var hoverBg = (function () {
+      var c = btn ? btn.parentNode : null;
+      var rgb = c ? getComputedStyle(c).getPropertyValue('--bgh').trim() : '';
+      var a = c ? getComputedStyle(c).getPropertyValue('--alpha-bgh').trim() : '';
+      return rgb ? 'rgba(' + rgb + ',' + (a || 1) + ')' : (bs ? bs.backgroundColor : '');
+    })();
+    var textFont = ls ? 'font-family:' + ls.fontFamily + ';color:' + ls.color + ';' : '';
+    var isPhone = /Android|iPhone|iPad|iPod|Mobile|Silk|Kindle/i.test(navigator.userAgent) ||
+                  (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+
+    var val = function (n) { var el = form.querySelector('[name="' + n + '"]'); return el ? el.value.trim() : ''; };
+    var compose = function () {
+      var name = (val('first-name') + ' ' + val('last-name')).trim();
+      return {
+        subject: 'Website inquiry from ' + (name || val('email')),
+        body: 'Name: ' + name + '\nEmail: ' + val('email') + '\nPhone: ' + val('phone') + '\n\nMessage:\n' + val('write-a message')
+      };
+    };
+    var e = encodeURIComponent;
+    var SERVICES = {
+      gmail:   { name: 'Gmail', url: function (m) { return 'https://mail.google.com/mail/?view=cm&fs=1&to=' + e(TO) + '&su=' + e(m.subject) + '&body=' + e(m.body); } },
+      outlook: { name: 'Outlook', url: function (m) { return 'https://outlook.live.com/mail/0/deeplink/compose?to=' + e(TO) + '&subject=' + e(m.subject) + '&body=' + e(m.body); } },
+      office:  { name: 'Outlook (school/work)', url: function (m) { return 'https://outlook.office.com/mail/deeplink/compose?to=' + e(TO) + '&subject=' + e(m.subject) + '&body=' + e(m.body); } },
+      yahoo:   { name: 'Yahoo Mail', url: function (m) { return 'https://compose.mail.yahoo.com/?to=' + e(TO) + '&subject=' + e(m.subject) + '&body=' + e(m.body); } },
+      app:     { name: 'your email app', url: function (m) { return 'mailto:' + TO + '?subject=' + e(m.subject) + '&body=' + e(m.body); } }
+    };
+    var guess = function (address) {
+      var d = (address.split('@')[1] || '').toLowerCase();
+      if (/^(gmail|googlemail)\.com$/.test(d)) return 'gmail';
+      if (/^(outlook|hotmail|live|msn)\.[a-z.]+$/.test(d)) return 'outlook';
+      if (/^(yahoo\.[a-z.]+|ymail\.com|rocketmail\.com)$/.test(d)) return 'yahoo';
+      if (/^(icloud|me|mac)\.com$/.test(d)) return 'app';
+      return null;
+    };
+
+    /* Open a link from the click itself so browsers allow the new tab. */
+    var go = function (url) {
+      var a = document.createElement('a');
+      a.href = url;
+      if (url.indexOf('mailto:') !== 0) { a.target = '_blank'; a.rel = 'noopener'; }
+      a.style.display = 'none';
+      document.body.appendChild(a); a.click(); a.remove();
+    };
+    var copy = function (text) {
+      try {
+        if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text).catch(fallback);
+      } catch (x) {}
+      fallback();
+      function fallback() {
+        var t = document.createElement('textarea'); t.value = text;
+        t.style.cssText = 'position:fixed;top:0;left:0;opacity:0;';
+        document.body.appendChild(t); t.select();
+        try { document.execCommand('copy'); } catch (x) {}
+        t.remove();
+      }
+    };
+
+    /* Status line under the Submit button (same font and color as the form labels). */
     var note = document.createElement('p');
     note.setAttribute('role', 'status');
-    var ls = label ? getComputedStyle(label) : null;
-    note.style.cssText = 'position:absolute;left:0;right:0;top:calc(100% + 14px);margin:0;text-align:center;font-size:16px;z-index:1;' +
-      (ls ? 'font-family:' + ls.fontFamily + ';color:' + ls.color + ';' : '');
+    note.style.cssText = 'position:absolute;left:0;right:0;top:calc(100% + 8px);margin:0;text-align:center;font-size:15px;line-height:1.4;z-index:1;' + textFont;
     var holder = btn ? btn.parentNode : form;
     if (getComputedStyle(holder).position === 'static') holder.style.position = 'relative';
     holder.style.overflow = 'visible';
     holder.appendChild(note);
-
-    var sending = false;
-    var send = function (e) {
-      e.preventDefault();
-      if (sending || !form.reportValidity()) return;
-      var val = function (n) { var el = form.querySelector('[name="' + n + '"]'); return el ? el.value.trim() : ''; };
-      var name = (val('first-name') + ' ' + val('last-name')).trim();
-      sending = true;
-      if (btn) btn.disabled = true;
-      if (btnLabel) btnLabel.textContent = 'Sending...';
-      note.textContent = '';
-      fetch('https://formsubmit.co/ajax/edpassh2oecu@gmail.com', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify({
-          _subject: 'Website message from ' + (name || val('email')),
-          _template: 'table',
-          _captcha: 'false',
-          Name: name,
-          email: val('email'),
-          Phone: val('phone'),
-          Message: val('write-a message')
-        })
-      }).then(function (r) { return r.json(); }).then(function (d) {
-        if (d && (d.success === true || d.success === 'true')) {
-          form.reset();
-          note.textContent = 'Thanks for submitting!';
-        } else { throw new Error('not sent'); }
-      }).catch(function () {
-        note.textContent = 'Sorry, your message could not be sent. Please email us at edpassh2oecu@gmail.com.';
-      }).then(function () {
-        sending = false;
-        if (btn) btn.disabled = false;
-        if (btnLabel) btnLabel.textContent = 'Submit';
-      });
+    var link = function (text, fn) {
+      var a = document.createElement('a');
+      a.href = '#'; a.textContent = text;
+      a.style.cssText = 'color:inherit;text-decoration:underline;cursor:pointer;';
+      a.addEventListener('click', function (ev) { ev.preventDefault(); fn(); });
+      return a;
     };
-    form.addEventListener('submit', send);
-    if (btn) btn.addEventListener('click', send);
+    var show = function (service) {
+      note.textContent = '';
+      note.appendChild(document.createTextNode(
+        'Your message is ready in ' + SERVICES[service].name + ' \u2014 just press Send. ' +
+        'It was also copied, so you can paste it into an email to ' + TO + ' if needed. '));
+      note.appendChild(link('Use a different email', openChooser));
+    };
+
+    /* Choice panel: buttons are copies of the real Submit button, so they look identical. */
+    var overlay = null;
+    var openChooser = function () {
+      if (overlay) overlay.remove();
+      overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
+      var panel = document.createElement('div');
+      panel.setAttribute('role', 'dialog');
+      panel.setAttribute('aria-modal', 'true');
+      panel.setAttribute('aria-label', 'Choose your email');
+      var border = bs ? bs.backgroundColor : '#2858B6';
+      panel.style.cssText = 'background:#fff;border:3px solid ' + border + ';width:100%;max-width:420px;max-height:100%;overflow:auto;padding:28px 28px 22px;box-sizing:border-box;text-align:center;';
+      var h = document.createElement('p');
+      h.textContent = 'Which email do you use?';
+      h.style.cssText = 'margin:0 0 6px;font-size:24px;' + (bl ? 'font-family:' + bl.fontFamily + ';' : '') + 'color:' + border + ';';
+      var sub = document.createElement('p');
+      sub.textContent = 'We\u2019ll open it with your message already written.';
+      sub.style.cssText = 'margin:0 0 18px;font-size:15px;' + textFont;
+      panel.appendChild(h); panel.appendChild(sub);
+      var order = isPhone ? ['app', 'gmail', 'outlook', 'office', 'yahoo'] : ['gmail', 'outlook', 'office', 'yahoo', 'app'];
+      order.forEach(function (k) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = k === 'app' ? 'Email app' : SERVICES[k].name;
+        b.setAttribute('aria-label', b.textContent);
+        b.style.cssText = 'display:block;width:100%;height:50px;margin:0 0 10px;border:0;border-radius:' + bs.borderRadius +
+          ';cursor:pointer;background:' + bs.backgroundColor + ';color:' + bl.color + ';font:' + bl.font + ';transition:background-color .2s;';
+        var hovered = false, keyFocus = false;
+        var paint = function () { b.style.backgroundColor = (hovered || keyFocus) ? hoverBg : bs.backgroundColor; };
+        if (!isPhone) {
+          b.addEventListener('mouseenter', function () { hovered = true; paint(); });
+          b.addEventListener('mouseleave', function () { hovered = false; paint(); });
+        }
+        b.addEventListener('focus', function () { try { keyFocus = b.matches(':focus-visible'); } catch (x) { keyFocus = false; } paint(); });
+        b.addEventListener('blur', function () { keyFocus = false; paint(); });
+        b.addEventListener('click', function () { send(k); close(); });
+        panel.appendChild(b);
+      });
+      var cp = document.createElement('p');
+      cp.style.cssText = 'margin:8px 0 0;font-size:14px;line-height:1.5;' + textFont;
+      cp.appendChild(document.createTextNode('Or email us directly at ' + TO + ' '));
+      cp.appendChild(link('(copy address)', function () { copy(TO); cp.lastChild.textContent = '(copied!)'; }));
+      var cancel = link('Cancel', close);
+      cancel.style.display = 'inline-block'; cancel.style.marginTop = '12px'; cancel.style.fontSize = '14px';
+      cancel.style.cssText += textFont;
+      panel.appendChild(cp); panel.appendChild(cancel);
+      overlay.appendChild(panel);
+      overlay.addEventListener('click', function (ev) { if (ev.target === overlay) close(); });
+      document.addEventListener('keydown', esc);
+      document.body.appendChild(overlay);
+      panel.querySelector('button').focus();
+    };
+    function close() { if (overlay) { overlay.remove(); overlay = null; } document.removeEventListener('keydown', esc); }
+    function esc(ev) { if (ev.key === 'Escape') close(); }
+
+    var send = function (service) {
+      var m = compose();
+      go(SERVICES[service].url(m));
+      copy('To: ' + TO + '\nSubject: ' + m.subject + '\n\n' + m.body);
+      show(service);
+    };
+
+    var submit = function (ev) {
+      ev.preventDefault();
+      if (!form.reportValidity()) return;
+      if (isPhone) return send('app');
+      var g = guess(val('email'));
+      if (g) send(g); else openChooser();
+    };
+    form.addEventListener('submit', submit);
+    if (btn) btn.addEventListener('click', submit);
   });
 })();
 </script></body></html>
