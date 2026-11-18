@@ -574,6 +574,8 @@
     })();
     var textFont = ls ? 'font-family:' + ls.fontFamily + ';color:' + ls.color + ';' : '';
     var isAndroid = /Android/i.test(navigator.userAgent);
+    var isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+                (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
     var isPhone = /Android|iPhone|iPad|iPod|Mobile|Silk|Kindle/i.test(navigator.userAgent) ||
                   (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
 
@@ -597,6 +599,9 @@
         var web = 'https://mail.google.com/mail/?' + acct + 'view=cm&fs=1&to=' + e(TO) + '&su=' + e(m.subject) + '&body=' + e(m.body);
         /* Android: the Gmail app intercepts Gmail web links and drops the message, so open the
            app's compose screen directly; phones without the app fall back to the web version. */
+        /* iPhone/iPad: Gmail's mobile website ignores "new email" links, so open the Gmail app's
+           compose screen (the app opens in its current account; the visitor can switch "From"). */
+        if (isIOS) return 'googlegmail:///co?to=' + e(TO) + '&subject=' + e(m.subject) + '&body=' + e(m.body);
         if (isAndroid) return 'intent:' + TO + '?subject=' + e(m.subject) + '&body=' + e(m.body) +
           '#Intent;scheme=mailto;package=com.google.android.gm;S.browser_fallback_url=' + e(web) + ';end';
         return web;
@@ -720,6 +725,20 @@
       go(SERVICES[service].url(m));
       copy('To: ' + TO + '\nSubject: ' + m.subject + '\n\n' + m.body);
       show(service);
+      if (isIOS && service === 'gmail') {
+        /* If the page is still showing after a moment, the Gmail app probably isn't installed. */
+        var left = false;
+        var onHide = function () { if (document.hidden) left = true; };
+        document.addEventListener('visibilitychange', onHide);
+        setTimeout(function () {
+          document.removeEventListener('visibilitychange', onHide);
+          if (left || document.hidden) return;
+          note.textContent = '';
+          note.appendChild(document.createTextNode('If Gmail didn\u2019t open, the Gmail app may not be on this phone. Your message was copied, so you can paste it into any email to ' + TO + ', or '));
+          note.appendChild(link('open my email app', function () { send('app'); }));
+          note.appendChild(document.createTextNode('.'));
+        }, 2500);
+      }
     };
 
     var submit = function (ev) {
