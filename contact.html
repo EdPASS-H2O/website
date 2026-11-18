@@ -573,6 +573,7 @@
       return rgb ? 'rgba(' + rgb + ',' + (a || 1) + ')' : (bs ? bs.backgroundColor : '');
     })();
     var textFont = ls ? 'font-family:' + ls.fontFamily + ';color:' + ls.color + ';' : '';
+    var isAndroid = /Android/i.test(navigator.userAgent);
     var isPhone = /Android|iPhone|iPad|iPod|Mobile|Silk|Kindle/i.test(navigator.userAgent) ||
                   (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
 
@@ -586,7 +587,20 @@
     };
     var e = encodeURIComponent;
     var SERVICES = {
-      gmail:   { name: 'Gmail', url: function (m) { return 'https://mail.google.com/mail/?view=cm&fs=1&to=' + e(TO) + '&su=' + e(m.subject) + '&body=' + e(m.body); } },
+      gmail:   { name: 'Gmail', url: function (m) {
+        /* Open the Google account the visitor typed (e.g. a work address on Google Workspace),
+           not just whichever account is signed in first. Skipped for clearly non-Google addresses. */
+        var typed = val('email');
+        var dom = (typed.split('@')[1] || '').toLowerCase();
+        var nonGoogle = /^(yahoo\.[a-z.]+|ymail\.com|rocketmail\.com|(outlook|hotmail|live|msn)\.[a-z.]+|icloud\.com|me\.com|mac\.com|aol\.com)$/.test(dom);
+        var acct = (typed.indexOf('@') > 0 && !nonGoogle) ? 'authuser=' + e(typed) + '&' : '';
+        var web = 'https://mail.google.com/mail/?' + acct + 'view=cm&fs=1&to=' + e(TO) + '&su=' + e(m.subject) + '&body=' + e(m.body);
+        /* Android: the Gmail app intercepts Gmail web links and drops the message, so open the
+           app's compose screen directly; phones without the app fall back to the web version. */
+        if (isAndroid) return 'intent:' + TO + '?subject=' + e(m.subject) + '&body=' + e(m.body) +
+          '#Intent;scheme=mailto;package=com.google.android.gm;S.browser_fallback_url=' + e(web) + ';end';
+        return web;
+      } },
       outlook: { name: 'Outlook', url: function (m) { return 'https://outlook.live.com/mail/0/deeplink/compose?to=' + e(TO) + '&subject=' + e(m.subject) + '&body=' + e(m.body); } },
       office:  { name: 'Outlook (school/work)', url: function (m) { return 'https://outlook.office.com/mail/deeplink/compose?to=' + e(TO) + '&subject=' + e(m.subject) + '&body=' + e(m.body); } },
       yahoo:   { name: 'Yahoo Mail', url: function (m) { return 'https://compose.mail.yahoo.com/?to=' + e(TO) + '&subject=' + e(m.subject) + '&body=' + e(m.body); } },
@@ -605,7 +619,7 @@
     var go = function (url) {
       var a = document.createElement('a');
       a.href = url;
-      if (url.indexOf('mailto:') !== 0) { a.target = '_blank'; a.rel = 'noopener'; }
+      if (/^https?:/.test(url)) { a.target = '_blank'; a.rel = 'noopener'; }
       a.style.display = 'none';
       document.body.appendChild(a); a.click(); a.remove();
     };
